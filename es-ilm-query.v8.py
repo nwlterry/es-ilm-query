@@ -58,12 +58,20 @@ es = Elasticsearch(
     ssl_show_warn=False
 )
 
-# Get all indices with relevant stats (using pri.store.size for primary size check)
+# Test authentication with a simple request
 try:
-    indices = es.cat.indices(format="json", h="index,pri.store.size,pri,rep")
+    es_info = es.info()
+    print("Successfully connected to Elasticsearch cluster")
 except Exception as e:
-    print(f"Error fetching indices: {str(e)}")
+    print(f"Error connecting to Elasticsearch: {str(e)}")
     indices = []
+else:
+    # Get all indices with relevant stats (using pri.store.size for primary size check)
+    try:
+        indices = es.cat.indices(format="json", h="index,pri.store.size,pri,rep")
+    except Exception as e:
+        print(f"Error fetching indices: {str(e)}")
+        indices = []
 
 # Group indices by ILM policy
 groups = defaultdict(list)
@@ -89,9 +97,9 @@ for idx in indices:
     if size_bytes < size_threshold:
         index_name = idx["index"]
         
-        # Check ILM info using direct API call to _ilm/explain
+        # Check ILM info using client.perform_request
         try:
-            ilm_info = es.transport.perform_request("GET", f"/{index_name}/_ilm/explain")
+            ilm_info = es.client.perform_request("GET", f"/{index_name}/_ilm/explain")
             if isinstance(ilm_info, tuple):
                 print(f"Warning: Unexpected tuple response for index '{index_name}': {ilm_info}")
                 ilm_info = ilm_info[-1] if ilm_info else {}  # Take last element (likely body)
