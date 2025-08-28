@@ -4,7 +4,6 @@ import getpass
 from collections import defaultdict
 import urllib3
 import warnings
-import base64
 
 # Suppress all urllib3 warnings (including TLS-related)
 urllib3.disable_warnings()
@@ -21,6 +20,9 @@ password = getpass.getpass("Enter password: ")
 # Prompt for size threshold
 size_threshold_str = input("Enter size threshold (e.g., 1gb, 500mb): ")
 
+# Prompt for output file
+output_file = input("Enter output file path (e.g., output.json): ")
+
 # Function to parse size string to bytes
 def parse_size(size_str):
     size_str = size_str.lower().strip()
@@ -33,7 +35,11 @@ def parse_size(size_str):
     elif size_str.endswith('b'):
         return float(size_str[:-1])
     else:
-        return float(size_str)  # assume bytes if no unit
+        try:
+            return float(size_str)  # assume bytes if no unit
+        except ValueError:
+            print(f"Warning: Invalid size threshold '{size_str}', assuming 0 bytes")
+            return 0.0
 
 # Function to format bytes to human-readable string
 def format_size(bytes):
@@ -43,11 +49,6 @@ def format_size(bytes):
     return f"{bytes:.2f}B"
 
 size_threshold = parse_size(size_threshold_str)
-
-# Encode credentials for Basic Auth header
-auth_string = f"{username}:{password}"
-auth_encoded = base64.b64encode(auth_string.encode()).decode()
-auth_header = {"Authorization": f"Basic {auth_encoded}"}
 
 # Connect to Elasticsearch, ignoring certificate verification
 es = Elasticsearch(
@@ -88,13 +89,9 @@ for idx in indices:
     if size_bytes < size_threshold:
         index_name = idx["index"]
         
-        # Check ILM info using direct API call to _ilm/explain with auth headers
+        # Check ILM info using direct API call to _ilm/explain
         try:
-            ilm_info = es.transport.perform_request(
-                "GET",
-                f"/{index_name}/_ilm/explain",
-                headers=auth_header
-            )
+            ilm_info = es.transport.perform_request("GET", f"/{index_name}/_ilm/explain")
             if isinstance(ilm_info, tuple):
                 print(f"Warning: Unexpected tuple response for index '{index_name}': {ilm_info}")
                 ilm_info = ilm_info[-1] if ilm_info else {}  # Take last element (likely body)
@@ -138,5 +135,13 @@ for policy, idx_list in groups.items():
         ]
     }
 
-# Output results as JSON
+# Output results to console
 print(json.dumps(results, indent=2))
+
+# Output results to file
+try:
+    with open(output_file, 'w') as f:
+        json.dump(results, f, indent=2)
+    print(f"Results written to {output_file}")
+except Exception as e:
+    print(f"Error writing to file '{output_file}': {str(e)}")
