@@ -4,6 +4,7 @@ import getpass
 from collections import defaultdict
 import urllib3
 import warnings
+import base64
 
 # Suppress all urllib3 warnings (including TLS-related)
 urllib3.disable_warnings()
@@ -42,6 +43,11 @@ def format_size(bytes):
     return f"{bytes:.2f}B"
 
 size_threshold = parse_size(size_threshold_str)
+
+# Encode credentials for Basic Auth header
+auth_string = f"{username}:{password}"
+auth_encoded = base64.b64encode(auth_string.encode()).decode()
+auth_header = {"Authorization": f"Basic {auth_encoded}"}
 
 # Connect to Elasticsearch, ignoring certificate verification
 es = Elasticsearch(
@@ -82,10 +88,13 @@ for idx in indices:
     if size_bytes < size_threshold:
         index_name = idx["index"]
         
-        # Check ILM info using raw HTTP request to _ilm/explain
+        # Check ILM info using direct API call to _ilm/explain with auth headers
         try:
-            ilm_info = es.transport.perform_request("GET", f"/{index_name}/_ilm/explain")
-            # Handle case where response is a tuple (e.g., (status, body))
+            ilm_info = es.transport.perform_request(
+                "GET",
+                f"/{index_name}/_ilm/explain",
+                headers=auth_header
+            )
             if isinstance(ilm_info, tuple):
                 print(f"Warning: Unexpected tuple response for index '{index_name}': {ilm_info}")
                 ilm_info = ilm_info[-1] if ilm_info else {}  # Take last element (likely body)
