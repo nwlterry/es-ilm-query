@@ -27,7 +27,7 @@ csv_output_file = input("Enter CSV output file path (e.g., output.csv): ")
 # Function to parse size string to bytes
 def parse_size(size_str):
     size_str = size_str.lower().strip()
-    अगर size_str.endswith('gb'):
+    if size_str.endswith('gb'):
         return float(size_str[:-2]) * 1024**3
     elif size_str.endswith('mb'):
         return float(size_str[:-2]) * 1024**2
