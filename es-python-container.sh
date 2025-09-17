@@ -1,11 +1,46 @@
 #!/bin/bash
 
 # Prompt for environment
-read -p "Enter environment (e.g., prod, dev, test): " ENVIRONMENT
+read -p "Enter environment (e.g., prd, qa, dev): " ENVIRONMENT
 if [ -z "$ENVIRONMENT" ]; then
   echo "Error: Environment cannot be empty"
   exit 1
 fi
+
+# Prompt for Elasticsearch connection details
+read -p "Enter protocol (http or https): " PROTOCOL
+if [[ "$PROTOCOL" != "http" && "$PROTOCOL" != "https" ]]; then
+  echo "Error: Protocol must be http or https"
+  exit 1
+fi
+
+read -p "Enter hostname (e.g., localhost): " HOSTNAME
+if [ -z "$HOSTNAME" ]; then
+  echo "Error: Hostname cannot be empty"
+  exit 1
+fi
+
+read -p "Enter port (e.g., 9200): " PORT
+if ! [[ "$PORT" =~ ^[0-9]+$ ]]; then
+  echo "Error: Port must be a number"
+  exit 1
+fi
+
+read -p "Enter username: " USERNAME
+if [ -z "$USERNAME" ]; then
+  echo "Error: Username cannot be empty"
+  exit 1
+fi
+
+read -s -p "Enter password: " PASSWORD
+echo
+if [ -z "$PASSWORD" ]; then
+  echo "Error: Password cannot be empty"
+  exit 1
+fi
+
+# Construct the full host URL
+HOST="${PROTOCOL}://${HOSTNAME}:${PORT}"
 
 # Set variables
 IMAGE_NAME="quay.io/nwlterry/es-python-alpine:0.3"
@@ -29,8 +64,8 @@ for script_entry in "${SCRIPTS[@]}"; do
   SCRIPT_NAME="${script_entry##*:}"
   JSON_FILE="/app/${SCRIPT_NAME}_${CURRENT_DATE}.json"
   CSV_FILE="/app/${SCRIPT_NAME}_${CURRENT_DATE}.csv"
-  LOCAL_JSON_DEST="./${ENVIRONMENT}-${SCRIPT_NAME}_${CURRENT_DATE}.json"
-  LOCAL_CSV_DEST="./${ENVIRONMENT}-${SCRIPT_NAME}_${CURRENT_DATE}.csv"
+  LOCAL_JSON_DEST="./${ENVIRONMENT}_${SCRIPT_NAME}_${CURRENT_DATE}.json"
+  LOCAL_CSV_DEST="./${ENVIRONMENT}_${SCRIPT_NAME}_${CURRENT_DATE}.csv"
 
   # Check if the Python script exists in the container
   podman exec "$CONTAINER_NAME" test -f "/app/$PYTHON_SCRIPT_NAME"
@@ -40,9 +75,10 @@ for script_entry in "${SCRIPTS[@]}"; do
     exit 1
   fi
 
-  # Run the Python script interactively with a pseudo-terminal
+  # Run the Python script with arguments
   echo "Running $PYTHON_SCRIPT_NAME in container..."
-  podman exec -it "$CONTAINER_NAME" python "/app/$PYTHON_SCRIPT_NAME"
+  podman exec -it "$CONTAINER_NAME" python "/app/$PYTHON_SCRIPT_NAME" \
+    --host "$HOST" --username "$USERNAME" --password "$PASSWORD"
   if [ $? -ne 0 ]; then
     echo "Error: Failed to run $PYTHON_SCRIPT_NAME"
     podman rm -f "$CONTAINER_NAME"
